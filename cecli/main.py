@@ -1044,6 +1044,7 @@ async def main_async(argv=None, input=None, output=None, force_git_root=None, re
                 subtree_only=args.subtree_only,
                 git_commit_verify=args.git_commit_verify,
                 attribute_co_authored_by=args.attribute_co_authored_by,
+                show_spinner=args.spinner,
             )
         except FileNotFoundError:
             pass
