@@ -1015,6 +1015,7 @@ async def main_async(
                 subtree_only=args.subtree_only,
                 git_commit_verify=args.git_commit_verify,
                 attribute_co_authored_by=args.attribute_co_authored_by,
+                show_spinner=args.spinner,
             )
         except FileNotFoundError:
             pass
