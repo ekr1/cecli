@@ -702,6 +702,7 @@ async def main_async(argv=None, input=None, output=None, force_git_root=None, re
             notifications=args.notifications,
             notifications_command=args.notifications_command,
             verbose=args.verbose,
+            show_spinner=args.spinner,
         )
 
     validate_tui_args(args)
