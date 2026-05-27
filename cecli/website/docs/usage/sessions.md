@@ -167,7 +167,7 @@ export CECLI_SESSION_KEY="$(python -c 'import os,base64; print(base64.urlsafe_b6
 cecli --session-encrypt --auto-save
 ```
 
-Or use `--session-key-file` pointing at a file with the same urlsafe-base64 32-byte key.
+Or use `--session-key-file` pointing at a file with the same urlsafe-base64 32-byte key. BrightVision stores the key in the OS keychain and sets `CECLI_SESSION_KEY` for the Vision API process.
 
 ## Troubleshooting
 
