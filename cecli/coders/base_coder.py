@@ -1613,7 +1613,7 @@ class Coder(metaclass=UsageMeta):
                     self.io.output_task = asyncio.create_task(self.generate(user_message, preproc))
 
                     # Start spinner for output task
-                    self.io.start_spinner("Processing...", coder_uuid=getattr(self, 'uuid', None))
+                    self.io.start_spinner("Processing...", coder_uuid=getattr(self, "uuid", None))
                     await self.io.recreate_input()
 
                 # Monitor output task
@@ -2395,7 +2395,7 @@ class Coder(metaclass=UsageMeta):
                 spinner_text += f" • ${self.format_cost(self.total_cost)} session"
 
             if nested.getter(self.args, "spinner", True):
-                self.io.start_spinner(spinner_text, coder_uuid=getattr(self, 'uuid', None))
+                self.io.start_spinner(spinner_text, coder_uuid=getattr(self, "uuid", None))
             else:
                 self._deferred_cost_text = spinner_text
 
