@@ -308,7 +308,9 @@ class HttpBasedMcpServer(McpServer):
                 self._create_transport(url, http_client=http_client)
             )
 
-            read, write, _ = transport
+            # Different mcp SDK versions yield either 2 or 3 values from the
+            # streamable HTTP transport (the 3rd being a session-id callback).
+            read, write = transport[0], transport[1]
 
             session = await self.exit_stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
