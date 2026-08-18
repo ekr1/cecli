@@ -762,6 +762,11 @@ class RepoMap:
                 file_ok = False
 
             if not file_ok:
+
+                if os.path.isdir(fname):
+                    # This can happen in some cases; for example with git submodules...
+                    continue
+
                 skipped_missing += 1
                 if fname not in self.warned_files:
                     self.warned_files.add(fname)
@@ -770,6 +775,9 @@ class RepoMap:
                             f"Repo-map skipping missing file: {fname}"
                             " (removed on disk or not yet written)."
                         )
+                        if skipped_missing == 2:
+                            self.io.tool_warning(" Further skipped files will not be displayed...")
+
                 continue
 
             # dump(fname)
