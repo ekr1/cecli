@@ -15,6 +15,7 @@ import pytest
 from cecli.helpers.orchestration.environment import (
     AgentExecutionEnv,
     AgentProxy,
+    ToolProxy,
     build_orchestration_context_block,
 )
 from cecli.helpers.orchestration.safe_methods import _strip_allowed_imports
@@ -24,6 +25,7 @@ from cecli.helpers.orchestration.security import (
     SecurityFilter,
     _security_raise,
 )
+from cecli.tools.utils.base_tool import BaseTool
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -776,6 +778,235 @@ def test_agent_proxy_local_prefix_tool():
     tool = proxy.get_tool("Local--ReadFile")
     assert tool._tool_module is not None, "Local--ReadFile should resolve via ToolRegistry"
     assert tool._mcp_server is None
+
+
+# ===================================================================
+# ToolProxy — display of local tool calls (auto-approved bypass fix)
+# ===================================================================
+
+
+class _FakeIO:
+    """Minimal io stand-in that records everything tool_output/tool_error print."""
+
+    def __init__(self):
+        self.lines = []
+        self.confirm_ask_calls = []
+        self._last_type = None
+
+    def tool_output(self, message="", type=None, **kwargs):
+        self.lines.append(message)
+        self._last_type = type
+
+    def tool_error(self, message="", **kwargs):
+        self.lines.append(f"ERROR: {message}")
+        self._last_type = "error"
+
+    async def confirm_ask(self, *args, **kwargs):
+        # Recorded so tests can assert the auto-approved path never prompts.
+        self.confirm_ask_calls.append((args, kwargs))
+        return True
+
+    @property
+    def text(self):
+        return "\n".join(self.lines)
+
+
+class _FakeCoderForDisplay:
+    """Minimal coder stand-in with the attributes format_output()/ToolProxy need."""
+
+    def __init__(self, skip_cli_confirmations=True):
+        self.io = _FakeIO()
+        self.registered_tools = {"included": set(), "excluded": set()}
+        self.skip_cli_confirmations = skip_cli_confirmations
+        self.pretty = False
+        self.verbose = False
+        self.mcp_manager = None
+        # command_timeout=0 keeps Command.execute() on the simple
+        # foreground path in tests instead of the timeout/background one.
+        self.agent_config = {"command_timeout": 0}
+
+    def format_command_with_prefix(self, command):
+        return command
+
+
+class _RecordingLocalTool(BaseTool):
+    """Fake local tool used to assert display happens before execution."""
+
+    NORM_NAME = "fakelocaltool"
+    TRACK_INVOCATIONS = False
+    VALIDATIONS = {}
+    SCHEMA = {
+        "type": "function",
+        "function": {
+            "name": "FakeLocalTool",
+            "description": "test tool",
+            "parameters": {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": [],
+            },
+        },
+    }
+
+    call_order = []
+
+    @classmethod
+    def format_output(cls, coder, mcp_server, tool_response):
+        cls.call_order.append("format_output")
+        super().format_output(coder, mcp_server, tool_response)
+
+    @classmethod
+    async def execute(cls, coder, value=None, **kwargs):
+        cls.call_order.append("execute")
+        return f"executed with value={value}"
+
+
+@pytest.mark.asyncio
+async def test_tool_proxy_local_dispatch_displays_tool_call():
+    """ToolProxy.call renders the tool call (format_output) before executing it."""
+    _RecordingLocalTool.call_order = []
+    coder = _FakeCoderForDisplay()
+    proxy = ToolProxy("FakeLocalTool", coder, tool_module=_RecordingLocalTool)
+
+    result = await proxy.call(value="hello")
+
+    assert _RecordingLocalTool.call_order == ["format_output", "execute"]
+    assert "executed with value=hello" in result["result"][0]["content"]
+    assert any("Tool Call:" in line for line in coder.io.lines)
+    assert any("FakeLocalTool" in line for line in coder.io.lines)
+    assert any("Local" in line for line in coder.io.lines)
+
+
+@pytest.mark.asyncio
+async def test_tool_proxy_local_dispatch_displays_even_when_auto_approved():
+    """Auto-approved (skip_cli_confirmations) calls must still be displayed.
+
+    Regression test for the bug where a local tool call executed from the
+    orchestration sandbox produced zero transcript output whenever it was
+    auto-approved, because display previously depended entirely on the
+    top-level agent loop's _print_tool_call_info, which the sandbox path
+    bypasses.
+    """
+    _RecordingLocalTool.call_order = []
+    coder = _FakeCoderForDisplay(skip_cli_confirmations=True)
+    proxy = ToolProxy("FakeLocalTool", coder, tool_module=_RecordingLocalTool)
+
+    await proxy.call(value="auto-approved-value")
+
+    # No permission prompt should have fired...
+    assert coder.io.confirm_ask_calls == []
+    # ...yet the call must still have been rendered to the transcript.
+    assert any("Tool Call:" in line for line in coder.io.lines)
+
+
+@pytest.mark.asyncio
+async def test_tool_proxy_local_dispatch_uses_real_local_server_name():
+    """format_output receives the real 'Local' McpServer when one is registered."""
+    from types import SimpleNamespace
+
+    _RecordingLocalTool.call_order = []
+    coder = _FakeCoderForDisplay()
+
+    class _FakeLocalServer:
+        name = "Local"
+
+    class _FakeMcpManager:
+        def get_server(self, name):
+            assert name == "Local"
+            return _FakeLocalServer()
+
+    coder.mcp_manager = _FakeMcpManager()
+    proxy = ToolProxy("FakeLocalTool", coder, tool_module=_RecordingLocalTool)
+
+    await proxy.call(value="x")
+
+    assert any("Local" in line for line in coder.io.lines)
+
+
+@pytest.mark.asyncio
+async def test_tool_proxy_local_dispatch_display_failure_does_not_block_execution():
+    """A broken format_output must not prevent the underlying tool from running."""
+
+    class _BrokenDisplayTool(BaseTool):
+        NORM_NAME = "brokendisplaytool"
+        TRACK_INVOCATIONS = False
+        VALIDATIONS = {}
+        SCHEMA = {
+            "type": "function",
+            "function": {
+                "name": "BrokenDisplayTool",
+                "description": "test tool",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        }
+
+        @classmethod
+        def format_output(cls, coder, mcp_server, tool_response):
+            raise RuntimeError("boom")
+
+        @classmethod
+        async def execute(cls, coder, **kwargs):
+            return "still executed"
+
+    coder = _FakeCoderForDisplay()
+    proxy = ToolProxy("BrokenDisplayTool", coder, tool_module=_BrokenDisplayTool)
+
+    result = await proxy.call()
+
+    assert "still executed" in result["result"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_tool_proxy_local_dispatch_no_io_is_safe():
+    """If the coder has no `.io`, display is skipped without raising."""
+
+    class _NoIoCoder:
+        registered_tools = {"included": set(), "excluded": set()}
+
+    coder = _NoIoCoder()
+    proxy = ToolProxy("FakeLocalTool", coder, tool_module=_RecordingLocalTool)
+
+    result = await proxy.call(value="ok")
+
+    assert "executed with value=ok" in result["result"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_tool_proxy_command_tool_shown_when_auto_approved(monkeypatch):
+    """End-to-end regression test against the real Command tool.
+
+    Reproduces the reported bug: a Command call auto-approved via
+    ``skip_cli_confirmations`` (YOLO mode) must still print a "Tool Call:"
+    header and the literal "Command:" text with the shell command, even
+    though no confirmation prompt is shown.
+    """
+    from cecli.tools.command import Tool as CommandTool
+
+    CommandTool.ALLOWED_SESSION_COMMANDS = {}
+
+    async def fake_execute_foreground(cls, coder, command_string):
+        from cecli.tools.utils.responses import ToolResponse
+
+        response = ToolResponse(cls.NORM_NAME)
+        response.append_result(f"ran: {command_string}")
+        return response
+
+    monkeypatch.setattr(
+        CommandTool, "_execute_foreground", classmethod(fake_execute_foreground)
+    )
+
+    coder = _FakeCoderForDisplay(skip_cli_confirmations=True)
+    proxy = ToolProxy("Command", coder, tool_module=CommandTool)
+
+    result = await proxy.call(command="echo auto-approved")
+
+    # Auto-approved: no permission prompt should have fired.
+    assert coder.io.confirm_ask_calls == []
+    # But the command must still be visible in the transcript.
+    assert any("Tool Call:" in line for line in coder.io.lines)
+    assert any("Command:" in line for line in coder.io.lines)
+    assert any("echo auto-approved" in line for line in coder.io.lines)
+    assert "ran: echo auto-approved" in result["result"][0]["content"]
 
 
 # ===================================================================
