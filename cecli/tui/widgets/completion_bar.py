@@ -76,16 +76,20 @@ class CompletionBar(Widget, can_focus=False):
 
         pass
 
-    def __init__(self, suggestions: list[str] = None, prefix: str = "", **kwargs):
+    def __init__(
+        self, suggestions: list[str] = None, prefix: str = "", color_emoji: bool = True, **kwargs
+    ):
         """Initialize completion bar.
 
         Args:
             suggestions: List of completion suggestions
             prefix: Current input prefix to complete from
+            color_emoji: Whether to use color emoji in keyboard hints
         """
         super().__init__(**kwargs)
         self.suggestions = (suggestions or [])[: self.MAX_SUGGESTIONS]
         self.prefix = prefix
+        self.color_emoji = color_emoji
         self.selected_index = 0
         self._has_cycled = False  # Track if user has actively cycled through suggestions
         self._item_widgets: list[Static] = []
@@ -152,6 +156,11 @@ class CompletionBar(Widget, can_focus=False):
                 self._common_prefix = ""
                 self._display_names = candidates[:]
 
+    def _hint_text(self) -> str:
+        if self.color_emoji:
+            return "Tab ↹  Enter ↩️  Esc ❌"
+        return "Tab ↹  Enter ⏎  Esc ✗"
+
     def compose(self) -> ComposeResult:
         """Create the bar layout."""
         # Directory prefix (shown once)
@@ -182,7 +191,7 @@ class CompletionBar(Widget, can_focus=False):
         self._right_more.display = remaining > 0
         yield self._right_more
 
-        self._hint = Static("Tab ↹  Enter ⏎  Esc ✗", classes="completion-hint")
+        self._hint = Static(self._hint_text(), classes="completion-hint")
         yield self._hint
 
     def update_suggestions(self, suggestions: list[str], prefix: str = "") -> None:
@@ -215,7 +224,7 @@ class CompletionBar(Widget, can_focus=False):
             self._right_more = Static("", classes="completion-more")
             self.mount(self._right_more, after=self._left_more if self._left_more else None)
         if self._hint is None or self._hint.parent is None:
-            self._hint = Static("Tab ↹  Enter ⏎  Esc ✗", classes="completion-hint")
+            self._hint = Static(self._hint_text(), classes="completion-hint")
             self.mount(self._hint)
 
         # Grow the widget list to the window size
