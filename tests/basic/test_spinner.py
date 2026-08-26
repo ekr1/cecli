@@ -59,6 +59,24 @@ class TestSpinnerArgParsing:
         assert args.spinner is False
 
 
+class TestColorEmojiArgParsing:
+    """Tests that argparse correctly handles --color-emoji / --no-color-emoji."""
+
+    def test_color_emoji_default_is_true(self):
+        from cecli.args import get_parser
+
+        parser = get_parser(default_config_files=[], git_root=None)
+        args = parser.parse_args([])
+        assert args.color_emoji is True
+
+    def test_no_color_emoji_flag_sets_false(self):
+        from cecli.args import get_parser
+
+        parser = get_parser(default_config_files=[], git_root=None)
+        args = parser.parse_args(["--no-color-emoji"])
+        assert args.color_emoji is False
+
+
 class TestIOSpinnerGating:
     """Tests that InputOutput.start_spinner respects show_spinner=False."""
 
@@ -84,3 +102,19 @@ class TestIOSpinnerGating:
         io.start_spinner("Awaiting Confirmation...")
         assert io.fallback_spinner is None
         assert io.spinner_running is False
+
+
+class TestColorEmojiFormatting:
+    def test_io_replaces_monochrome_status_glyphs_by_default(self):
+        from cecli.io import InputOutput
+
+        io = InputOutput(pretty=False)
+
+        assert io.format_color_emoji("✓ ⚠ ⛭ 🗀 🗐 →") == "✅ ⚠️ ⚙️ 📁 📄 ➡️"
+
+    def test_io_retains_monochrome_status_glyphs_when_disabled(self):
+        from cecli.io import InputOutput
+
+        io = InputOutput(pretty=False, color_emoji=False)
+
+        assert io.format_color_emoji("✓ ⚠ ⛭ 🗀 🗐 →") == "✓ ⚠ ⛭ 🗀 🗐 →"
