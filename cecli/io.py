@@ -54,6 +54,27 @@ from .waiting import Spinner
 
 # Constants
 NOTIFICATION_MESSAGE = "cecli is waiting for your input"
+COLOR_EMOJI_REPLACEMENTS = {
+    "✓": "✅",
+    "✗": "❌",
+    "⚠": "⚠️",
+    "⛭": "⚙️",
+    "ℹ": "ℹ️",
+    "🗀": "📁",
+    "🗐": "📄",
+    "○": "⚪",
+    "●": "⚫",
+    "◇": "🔷",
+    "◆": "🔶",
+    "□": "⬜",
+    "■": "⬛",
+    "↑↓": "↕️",
+    "↑": "⬆️",
+    "↓": "⬇️",
+    "→": "➡️",
+    "←": "⬅️",
+    "⏎": "↩️",
+}
 
 
 def ensure_hash_prefix(color):
@@ -370,6 +391,7 @@ class InputOutput:
         notification_bell=False,
         verbose=False,
         show_spinner=True,
+        color_emoji=True,
     ):
         self.console = Console()
         self.pretty = pretty
@@ -389,6 +411,7 @@ class InputOutput:
         self.notification_bell = notification_bell
         self.custom_notification_command = False
         self.verbose = verbose
+        self.color_emoji = color_emoji
         self.profile_start_time = None
         self.profile_last_time = None
         self.last_notification_time = 0
@@ -550,6 +573,14 @@ class InputOutput:
         # Validate color settings after console is initialized
         self._validate_color_settings()
         self.append_chat_history(f"\n# cecli chat started at {current_time}\n\n")
+
+    def format_color_emoji(self, text):
+        if not self.color_emoji or not isinstance(text, str):
+            return text
+
+        for monochrome, emoji in COLOR_EMOJI_REPLACEMENTS.items():
+            text = re.sub(re.escape(monochrome) + r"(?!\ufe0f)", emoji, text)
+        return text
 
     def _spinner_supports_unicode(self) -> bool:
         if not self.is_tty:
@@ -1470,6 +1501,7 @@ class InputOutput:
         return res
 
     def _tool_message(self, message="", strip=True, color=None, **kwargs):
+        message = self.format_color_emoji(message)
         if message.strip():
             if "\n" in message:
                 for line in message.splitlines():
@@ -1543,6 +1575,7 @@ class InputOutput:
         self._tool_message(message, strip, self.tool_warning_color, **kwargs)
 
     def tool_output(self, *messages, log_only=False, bold=False, type=None, **kwargs):
+        messages = tuple(self.format_color_emoji(message) for message in messages)
         if messages:
             hist = " ".join(messages)
             hist = f"{hist.strip()}"

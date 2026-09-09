@@ -1944,7 +1944,10 @@ class TUI(App):
             else:
                 # Create new completion bar
                 completion_bar = CompletionBar(
-                    suggestions=suggestions, prefix=text, id="completion-bar"
+                    suggestions=suggestions,
+                    prefix=text,
+                    color_emoji=self.args.color_emoji,
+                    id="completion-bar",
                 )
                 self.mount(completion_bar, before=input_area)
 

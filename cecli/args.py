@@ -700,6 +700,12 @@ def get_parser(default_config_files, git_root):
         help="Enable/disable the spinner while waiting for LLM responses (default: True)",
     )
     group.add_argument(
+        "--color-emoji",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use color emoji for status and tool output glyphs (default: True)",
+    )
+    group.add_argument(
         "--user-input-color",
         default="#00cc00",
         help="Set the color for user input (default: #00cc00)",

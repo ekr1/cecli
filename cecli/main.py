@@ -846,6 +846,7 @@ async def main_async(
             notification_bell=args.notification_bell,
             verbose=args.verbose,
             show_spinner=args.spinner,
+            color_emoji=args.color_emoji,
         )
 
     validate_tui_args(args)

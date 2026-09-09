@@ -92,38 +92,33 @@ class InputContainer(Vertical):
         except Exception:
             return []
 
-    @staticmethod
-    def _format_sub_agent_pills(sub_agents: list, show_squares: bool = False) -> str:
-        """Format sub-agent info into a compact pill string for the border title.
-
-        Uses four distinct icons based on generating/active state:
-          - ○ (not generating, not active)
-          - ● (not generating, active)
-          - ◇/□ (generating, not active) — alternates for animation
-          - ◆/■ (generating, active) — alternates for animation
-
-        Args:
-            sub_agents: List of dicts with ``name``, ``uuid``, ``active``, and ``generating`` keys.
-            show_squares: If True, use square icons (□/■) instead of diamonds (◇/◆) for generating agents.
-
-        Returns:
-            A string like ``"◍ primary ◆ reviewer (a6b)"``.
-        """
+    def _format_sub_agent_pills(self, sub_agents: list, show_squares: bool = False) -> str:
+        """Format sub-agent info into a compact pill string for the border title."""
         parts = []
         name_counts = {}
         for sa in sub_agents:
             name_counts[sa["name"]] = name_counts.get(sa["name"], 0) + 1
 
+        color_emoji = getattr(self.app.args, "color_emoji", True)
+        icons = (
+            {
+                "idle": ("⚪", "⚫"),
+                "diamond": ("🔷", "🔶"),
+                "square": ("⬜", "⬛"),
+            }
+            if color_emoji
+            else {
+                "idle": ("○", "●"),
+                "diamond": ("◇", "◆"),
+                "square": ("□", "■"),
+            }
+        )
         for sa in sub_agents:
             active = sa.get("active", False)
-            gen = sa.get("generating", False)
-            if gen:
-                if show_squares:
-                    icon = "■" if active else "□"
-                else:
-                    icon = "◆" if active else "◇"
-            else:
-                icon = "●" if active else "○"
+            state = "square" if sa.get("generating", False) and show_squares else "diamond"
+            if not sa.get("generating", False):
+                state = "idle"
+            icon = icons[state][active]
 
             name = sa["name"]
             display_name = name
