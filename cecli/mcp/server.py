@@ -419,8 +419,12 @@ class HttpBasedMcpServer(McpServer):
         url = self.config.get("url")
         headers = self.config.get("headers", {})
 
+        # Only use OAuth when no explicit Authorization header is provided.
+        # httpx rejects OAuthClientProvider unless it is actually needed,
+        # and a static Bearer token should bypass the OAuth flow entirely.
+        has_auth_header = any(k.lower() == "authorization" for k in headers)
         oauth_provider = None
-        if not headers:
+        if not has_auth_header:
             oauth_provider = await self._create_oauth_provider()
 
         http_client_cls = _get_http_client_module().AsyncClient

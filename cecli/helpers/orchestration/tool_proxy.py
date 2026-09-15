@@ -150,6 +150,7 @@ class ToolProxy:
         """
 
         if self._tool_module is not None:
+            self._display_tool_call(kwargs)
             result = self._tool_module.process_response(self._coder, kwargs, _convert=False)
             if asyncio.iscoroutine(result):
                 result = await result
@@ -163,6 +164,70 @@ class ToolProxy:
             return self._normalize_result(result)
 
         raise ValueError(f"No executor for tool '{self._tool_name}'")
+
+    def _display_tool_call(self, kwargs: dict) -> None:
+        """Render this local tool call in the transcript before executing it.
+
+        Local tools invoked from the orchestration sandbox bypass the main
+        agent loop's ``_print_tool_call_info`` step entirely, so nothing
+        would otherwise be printed for auto-approved calls (e.g. a
+        session-cached or allow-listed ``Command``) since no permission
+        prompt fires either in that case. Mirror the top-level path by
+        calling the tool's own ``format_output`` before executing it, so
+        display doesn't silently depend on whether a prompt happened to
+        fire.
+        """
+        from types import SimpleNamespace
+
+        coder = self._coder
+        io = getattr(coder, "io", None)
+        if io is None:
+            return
+
+        try:
+            arguments = json.dumps(kwargs)
+        except (TypeError, ValueError):
+            arguments = json.dumps({k: str(v) for k, v in kwargs.items()})
+
+        tool_response = SimpleNamespace(
+            id=f"orchestrate-{self._tool_name}",
+            type="function",
+            function=SimpleNamespace(
+                name=self._tool_name,
+                arguments=arguments,
+            ),
+        )
+
+        try:
+            self._tool_module.format_output(
+                coder=coder,
+                mcp_server=self._get_local_server_for_display(),
+                tool_response=tool_response,
+            )
+        except Exception:
+            # Display is best-effort; never let a formatting problem
+            # prevent the actual tool call from executing.
+            pass
+
+    def _get_local_server_for_display(self) -> Any:
+        """Best-effort lookup of the real "Local" MCP server for display purposes.
+
+        Falls back to a minimal stand-in object exposing just ``.name`` when
+        no ``mcp_manager`` is available (e.g. in tests).
+        """
+        from types import SimpleNamespace
+
+        mcp_manager = getattr(self._coder, "mcp_manager", None)
+        get_server = getattr(mcp_manager, "get_server", None) if mcp_manager else None
+        if callable(get_server):
+            try:
+                server = get_server("Local")
+            except Exception:
+                server = None
+            if server is not None:
+                return server
+
+        return SimpleNamespace(name="Local")
 
     @staticmethod
     def _normalize_result(result: Any) -> "ToolResult":
